@@ -5,38 +5,23 @@
 library(dplyr)
 library(ggplot2)
 library(forcats)
+library(renv)
+library(gt)
 
 api_token <- yaml::read_yaml("secrets.yaml")$JETON_API
 
-# FONCTIONS ---------------------------------
-
-decennie_a_partir_annee <- function(annee) {
-  return(annee - annee %% 10)
-}
-
-fonction_de_stat_agregee <- function(a, b = "moyenne", ...) {
-  if (b == "moyenne") {
-    x <- mean(a, na.rm = TRUE, ...)
-  } else if (b == "ecart-type" || b == "sd") {
-    x <- sd(a, na.rm = TRUE, ...)
-  } else if (b == "variance") {
-    x <- var(a, na.rm = TRUE, ...)
-  }
-  return(x)
-}
-
-fonction_de_stat_agregee(rnorm(10))
-fonction_de_stat_agregee(rnorm(10), "ecart-type")
-fonction_de_stat_agregee(rnorm(10), "variance")
+source("R/fonctions.R", encoding = "UTF-8")
 
 
-# IMPORT DONNEES -----------------------------
+# IMPORT DONNEES ------------------
 
-df <- readr::read_csv2(
-  "individu_reg.csv",
-  col_select = c("region", "aemm", "aged", "anai", "catl", "cs1", "cs2",
-                 "cs3", "couple", "na38", "naf08", "pnai12", "sexe",
-                 "surf", "tp", "trans", "ur")
+df <- arrow::read_parquet(
+  "individu_reg.parquet",
+  col_select  = c(
+    "region", "aemm", "aged", "anai", "catl", "cs1", "cs2", "cs3",
+    "couple", "na38", "naf08", "pnai12", "sexe", "surf", "tp",
+    "trans", "ur"
+  )
 )
 
 # RETRAITEMENT --------------------------------
@@ -53,8 +38,8 @@ df$sexe <- df$sexe %>%
 
 summarise(group_by(df, aged), n())
 
-fonction_de_stat_agregee(df %>% filter(sexe == "Homme") %>% pull(aged))
-fonction_de_stat_agregee(df %>% filter(sexe == "Femme") %>% pull(aged))
+stats_agregees(df %>% filter(sexe == "Homme") %>% pull(aged))
+stats_agregees(df %>% filter(sexe == "Femme") %>% pull(aged))
 
 ## stats trans par statut =====================
 
@@ -64,6 +49,23 @@ df3 <- df %>%
   group_by(couple) %>%
   mutate(y = 100 * x / sum(x))
 
+stats_age <- df %>%
+  group_by(decennie = decennie_a_partir_annee(age)) %>%
+  summarise(n())
+
+table_age <- gt::gt(stats_age) %>%
+  gt::tab_header(
+    title = "Distribution des âges dans notre population"
+  ) %>%
+  gt::fmt_number(
+    columns = `n()`,
+    sep_mark = " ",
+    decimals = 0
+  ) %>%
+  gt::cols_label(
+    decennie = "Tranche d'âge",
+    `n()` = "Population"
+  )
 
 # GRAPHIQUES -----------------------------------
 
@@ -100,3 +102,4 @@ df3 <- df3 %>%
   )
 
 MASS::polr(surf ~ cs1 + factor(ur), df3)
+
